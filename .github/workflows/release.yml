@@ -26,10 +26,6 @@ jobs:
 
       - run: pnpm install
       - run: pnpm build
-
-      # Robot ini akan mengecek: Apakah ada file "Changeset"?
-      # Kalau ada, dia akan bikin Pull Request "Version Packages"
-      # Kalau PR itu di-merge, dia akan otomatis npm publish
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
