@@ -1,110 +1,70 @@
-const { transform } = require('@svgr/core');
-const fs = require('fs-extra');
-const path = require('path');
+const { transform } = require("@svgr/core");
+const fs = require("fs-extra");
+const path = require("path");
 
-// --- KONFIGURASI PATH ---
-const rootDir = path.resolve(__dirname, '..');
-const svgBaseDir = path.join(rootDir, 'src/svg');
-const reactOutDir = path.join(rootDir, 'src/react');
+const ASSETS_DIR = path.resolve(__dirname, "../assets");
+const SRC_DIR = path.resolve(__dirname, "../src/react");
 
-// Bersihkan folder output
-fs.emptyDirSync(reactOutDir);
+async function processFolder(inputDir, outputDir, themeName) {
+  if (!(await fs.pathExists(inputDir))) return;
 
-// Template React Component
-const componentTemplate = ({ componentName, jsx }, { tpl }) => {
-  return tpl`
-    import * as React from "react";
-    import type { SVGProps } from "react";
-    
-    const ${componentName} = (props: SVGProps<SVGSVGElement>) => (
-      ${jsx}
-    );
-    
-    export default ${componentName};
-  `;
-};
+  await fs.ensureDir(outputDir);
+  const files = await fs.readdir(inputDir);
+  const exports = [];
 
-// Helper: kebab-case to PascalCase
-const toPascalCase = (str) => 
-  str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+  for (const file of files) {
+    if (path.extname(file) !== ".svg") continue;
 
-async function buildIcons() {
-  console.log('Generate Humanicon (Mode: All/Namespace)...');
-  
-  const styles = ['outline', 'solid'];
-  let indexContent = '';
-  let count = 0;
+    const svg = await fs.readFile(path.join(inputDir, file), "utf8");
+    // Home.svg -> Home
+    const name =
+      path.basename(file, ".svg").charAt(0).toUpperCase() +
+      path.basename(file, ".svg").slice(1);
 
-  for (const style of styles) {
-    const styleDir = path.join(svgBaseDir, style);
-    
-    if (!fs.existsSync(styleDir)) {
-      console.warn(`⚠️ Folder ${style} tidak ditemukan, skipping...`);
-      continue;
-    }
-
-    const files = await fs.readdir(styleDir);
-    const svgFiles = files.filter(file => file.endsWith('.svg'));
-
-    console.log(`📂 Processing ${style}: ${svgFiles.length} icons`);
-
-    for (const file of svgFiles) {
-      const originalName = file.replace('.svg', '');
-      const pascalName = toPascalCase(originalName);
-      
-      // --- LOGIKA PENAMAAN BARU ---
-      // 1. Outline -> Polos (contoh: 'User')
-      // 2. Solid   -> Pakai akhiran 'Fill' (contoh: 'UserFill')
-      let suffix = '';
-      if (style === 'solid') {
-        suffix = 'Fill';
-      }
-      
-      const componentName = `${pascalName}${suffix}`;
-      
-      // Baca File SVG
-      const svgCode = await fs.readFile(path.join(styleDir, file), 'utf8');
-
-      // Transformasi SVG ke React Code
-      const jsCode = await transform(
-        svgCode,
-        {
-          typescript: true,
-          plugins: ['@svgr/plugin-svgo', '@svgr/plugin-jsx', '@svgr/plugin-prettier'],
-          icon: true,
-          template: componentTemplate,
-          svgoConfig: {
-            plugins: [
-              {
-                name: 'preset-default',
-                params: {
-                  overrides: {
-                    removeViewBox: false,
-                  },
-                },
-              },
-              {
-                name: 'convertColors', 
-                params: { currentColor: true },
-              }
-            ],
-          },
+    const componentCode = await transform(
+      svg,
+      {
+        plugins: ["@svgr/plugin-svgo", "@svgr/plugin-jsx"],
+        icon: true,
+        typescript: true,
+        // Ini supaya warnanya bisa diganti lewat props
+        svgoConfig: {
+          plugins: [{ name: "convertColors", params: { currentColor: true } }],
         },
-        { componentName }
-      );
+      },
+      { componentName: name },
+    );
 
-      // Tulis file .tsx
-      await fs.outputFile(path.join(reactOutDir, `${componentName}.tsx`), jsCode);
-      
-      // Tambahkan ke index export
-      indexContent += `export { default as ${componentName} } from './${componentName}';\n`;
-      count++;
-    }
+    await fs.writeFile(path.join(outputDir, `${name}.tsx`), componentCode);
+    exports.push(`export * from './${name}';`);
   }
 
-  // Tulis file index.ts utama
-  await fs.outputFile(path.join(reactOutDir, 'index.ts'), indexContent);
-  console.log(`✨ Selesai! Total ${count} varian icon siap digunakan.`);
+  await fs.writeFile(path.join(outputDir, "index.ts"), exports.join("\n"));
 }
 
-buildIcons();
+async function run() {
+  await fs.remove(SRC_DIR);
+  const themes = await fs.readdir(ASSETS_DIR);
+
+  for (const theme of themes) {
+    const themePath = path.join(ASSETS_DIR, theme);
+    if (!(await fs.stat(themePath)).isDirectory()) continue;
+
+    if (theme === "default") {
+      // Handle outline & fill
+      await processFolder(
+        path.join(themePath, "outline"),
+        path.join(SRC_DIR, "default/outline"),
+      );
+      await processFolder(
+        path.join(themePath, "solid"),
+        path.join(SRC_DIR, "default/fill"),
+      );
+    } else {
+      // Handle custom themes
+      await processFolder(themePath, path.join(SRC_DIR, theme));
+    }
+  }
+}
+
+run().catch(console.error);
