@@ -1,6 +1,6 @@
 {
   "name": "humanicon",
-  "version": "0.0.1",
+  "version": "1.0",
   "description": "Handcrafted open source icon library",
   "sideEffects": false,
   "main": "./dist/index.js",
