@@ -18,7 +18,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "humanicon": ["../../packages/icons/src"],
+      "humanicon/*": ["../../packages/icons/src/*"]
     },
     "target": "ES2017"
   },
